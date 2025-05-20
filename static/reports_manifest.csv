@@ -1,0 +1,7 @@
+image_type,case_display_name,image_path,report_path
+CT,Tumor,static/images/CT-Tumor.jpg,static/reports/CT-Tumor.txt
+CXR,Effusion,static/images/Effusion2.jpg,static/reports/Effusion2.txt
+CXR,Infection,static/images/Infection.jpg,static/reports/Infection.txt
+CXR,Lymphadenopathy,static/images/Lymphadenopathy2.jpg,static/reports/Lymphadenopathy2.txt
+CXR,Nodule A,static/images/Nodule3.jpg,static/reports/Nodule3.txt
+CXR,Nodule B,static/images/Nodule5.jpg,static/reports/Nodule5.txt

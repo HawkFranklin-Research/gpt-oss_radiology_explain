@@ -1,0 +1,5 @@
+env.list
+__pycache__
+**/__pycache__
+langextract/__pycache__
+.git

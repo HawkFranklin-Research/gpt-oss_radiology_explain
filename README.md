@@ -14,7 +14,7 @@ secrets:
   - HF_TOKEN
 ---
 
-# Radiology Image & Report Explainer Demo - Buit with MedGemma
+# Radiology Image & Report Explainer Demo - Built with MedGemma
 
 Consider an educational scenario where interacting with a radiology image can
 substantially improve learning. This demonstration shows how MedGemma might be built upon to provide a useful tool for exploring radiology images and associated reports by translating them into simple language, with visual cues to highlight the relevant areas of the image.

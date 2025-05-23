@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Radiology Image & Report Explainer Demo - Buit with MedGemma
+short_description: Radiology Image & Report Explainer Demo. Built with MedGemma
 models:
   - google/medgemma-4b-it
 secrets:

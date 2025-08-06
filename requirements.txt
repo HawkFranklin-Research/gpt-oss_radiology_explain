@@ -2,4 +2,9 @@ flask
 gunicorn
 Pillow
 diskcache
-requests
+# Add new dependencies for gpt-oss and local inference
+torch
+transformers
+accelerate
+gpt-oss
+huggingface-hub>=0.20.0

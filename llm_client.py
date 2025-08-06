@@ -1,87 +1,97 @@
-# Copyright 2025 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
-import requests
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
+from gpt_oss.tokenizer import get_tokenizer
 import config
 
 logger = logging.getLogger(__name__)
 
-_api_key = None
-_endpoint_url = None
+_model = None
+_tokenizer = None
 _initialized = False
 
 def init_llm_client():
-    """Initializes LLM client configuration by loading from config."""
-    global _api_key, _endpoint_url, _initialized
-    if config.HF_TOKEN and config.MEDGEMMA_ENDPOINT_URL:
-        _api_key = config.HF_TOKEN
-        _endpoint_url = config.MEDGEMMA_ENDPOINT_URL
+    """Initializes the LLM client by loading the model and tokenizer."""
+    global _model, _tokenizer, _initialized
+    if _initialized:
+        return
+
+    try:
+        if not config.HF_TOKEN:
+            logger.warning("HF_TOKEN is not set. Model download may fail if it's gated.")
+
+        logger.info(f"Loading model from local path: {config.MODEL_CACHE_DIR}")
+
+        # Load the gpt-oss model
+        _model = AutoModelForCausalLM.from_pretrained(
+            config.MODEL_CACHE_DIR,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+            trust_remote_code=True # Required by some models
+        )
+        
+        # gpt-oss uses a specific tokenizer provided by its package
+        _tokenizer = get_tokenizer()
+
         _initialized = True
-        logger.info("LLM client configured successfully.")
-    else:
-        _api_key = None
-        _endpoint_url = None
-        logger.error("LLM client could not be configured due to missing API key or endpoint URL.")
+        logger.info("LLM client initialized successfully with gpt-oss model.")
+    except Exception as e:
+        logger.error(f"Failed to initialize LLM client: {e}", exc_info=True)
+        _initialized = False
 
 def is_initialized():
     return _initialized
 
-def make_chat_completion_request(
-    model: str,
-    messages: list,
-    temperature: float,
-    max_tokens: int,
-    stream: bool,
-    top_p: float | None = None,
-    seed: int | None = None,
-    stop: list[str] | str | None = None,
-    frequency_penalty: float | None = None,
-    presence_penalty: float | None = None
-):
+def generate_completion_stream(input_ids: list, max_new_tokens: int = 250, temperature: float = 0.0):
     """
-    Makes a chat completion request to the configured LLM API.
+    Generates a stream of tokens from the model.
     """
     if not _initialized:
         logger.error("LLM client not initialized.")
         raise RuntimeError("LLM client not initialized.")
 
-    headers = {
-        "Authorization": f"Bearer {_api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": stream,
-    }
-    if top_p is not None: payload["top_p"] = top_p
-    if seed is not None: payload["seed"] = seed
-    if stop is not None: payload["stop"] = stop
-    if frequency_penalty is not None: payload["frequency_penalty"] = frequency_penalty
-    if presence_penalty is not None: payload["presence_penalty"] = presence_penalty
-
-    temp_url = _endpoint_url.rstrip('/')
-    if temp_url.endswith("/v1/chat/completions"):
-        full_url = temp_url
-    elif temp_url.endswith("/v1"):
-        full_url = temp_url + "/chat/completions"
+    if temperature == 0.0:
+        temperature = 1.0 # Transformers uses temp=1.0 for greedy with do_sample=False
+        do_sample = False
     else:
-        full_url = temp_url + "/v1/chat/completions"
+        do_sample = True
+        
+    input_tensor = torch.tensor([input_ids], device=_model.device)
+    streamer = TextStreamer(_tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-    response = requests.post(full_url, headers=headers, json=payload, stream=stream, timeout=60)
-    response.raise_for_status()
-    return response
+    # Use a separate thread for generation to stream the output
+    from threading import Thread
+
+    generation_kwargs = dict(
+        input_ids=input_tensor,
+        streamer=streamer,
+        max_new_tokens=max_new_tokens,
+        do_sample=do_sample,
+        temperature=temperature,
+        pad_token_id=_tokenizer.eot_token,
+    )
+    
+    # This is a simple streaming implementation. In a real application,
+    # you might want a more robust queue-based approach.
+    def generate_and_stream():
+        _model.generate(**generation_kwargs)
+
+    thread = Thread(target=generate_and_stream)
+    thread.start()
+
+    # In a real-world streaming scenario, you'd yield from the streamer.
+    # For this app's structure, we'll collect the full text and return it.
+    # The original app processed a stream but ultimately joined it.
+    # Let's adapt to that by generating the full text.
+    
+    output_ids = _model.generate(
+        input_ids=input_tensor,
+        max_new_tokens=max_new_tokens,
+        do_sample=do_sample,
+        temperature=temperature,
+        pad_token_id=_tokenizer.eot_token,
+    )
+    
+    # Decode the generated tokens, skipping the prompt
+    response_text = _tokenizer.decode(output_ids[0][len(input_ids):], skip_special_tokens=True)
+    return response_text

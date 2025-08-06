@@ -12,35 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM python:3.10-slim
+# --- Use Python 3.12 as required by gpt-oss ---
+FROM python:3.12-slim
 
-# Set an environment variable for unbuffered python output (good for logging)
-# and define the cache directory path
 ENV PYTHONUNBUFFERED=1
 ENV CACHE_DIR=/data/cache
+# --- Define a build argument for the Hugging Face token ---
+ARG HF_TOKEN
 
-# Install system dependencies first, as they change less frequently
+# Install system dependencies
 RUN apt-get update && \
     apt-get install -y fonts-ocr-a fonts-ocr-b unzip --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# Set up a new user named "user" with user ID 1000
-# -m creates the home directory /home/user
-# -s /bin/bash sets a default shell (good practice for debugging or execing into the container)
+# Set up a new user
 RUN useradd -m -s /bin/bash -u 1000 user
 
 WORKDIR /app
 
-COPY --chown=user:user . .
-
+# Install pip dependencies first
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Run tests after installing dependencies
+# --- Pre-download the model during the build process ---
+# This uses the build argument for authentication.
+# The Space secret HF_TOKEN will be passed during the build on the Hub.
+RUN huggingface-cli download openai/gpt-oss-20b --local-dir /app/models/gpt-oss-20b --token $HF_TOKEN
+
+# Copy the rest of the application code
+COPY --chown=user:user . .
+
+# Run tests
 RUN python -m unittest discover tests
 
-RUN mkdir -p $CACHE_DIR
-RUN chmod -R 777 $CACHE_DIR
-RUN unzip -o ./default_cache/radexplain-cache.zip -d $CACHE_DIR
+# Prepare cache directory
+RUN mkdir -p $CACHE_DIR && \
+    chmod -R 777 $CACHE_DIR && \
+    unzip -o ./default_cache/radexplain-cache.zip -d $CACHE_DIR
 
 USER user
 

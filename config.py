@@ -14,24 +14,29 @@
 
 import os
 from pathlib import Path
-import csv # Import the csv module
+import csv
 import logging
 
-# --- Configuration ---
-# Configure basic logging (optional, adjust as needed)
+# Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# API Configuration
+# --- Model Configuration ---
 HF_TOKEN = os.environ.get("HF_TOKEN", None)
-MEDGEMMA_ENDPOINT_URL = os.environ.get("MEDGEMMA_ENDPOINT_URL", None)
+# --- REMOVED: MEDGEMMA_ENDPOINT_URL ---
+# MEDGEMMA_ENDPOINT_URL = os.environ.get("MEDGEMMA_ENDPOINT_URL", None)
+
+# --- ADDED: Configuration for local gpt-oss model ---
+MODEL_ID = os.environ.get("MODEL_ID", "openai/gpt-oss-20b")
+# Path where the model is pre-downloaded in the Dockerfile
+MODEL_CACHE_DIR = "/app/models/gpt-oss-20b"
+
 
 # --- Paths using pathlib ---
-# Determine the base directory of the application
-BASE_DIR = Path(__file__).parent.resolve() # Use resolve() for absolute path
+BASE_DIR = Path(__file__).parent.resolve()
 STATIC_DIR = BASE_DIR / 'static'
 
-# --- Load available report/image pairs from CSV ---
+# --- Load available report/image pairs from CSV (No changes here) ---
 AVAILABLE_REPORTS = []
 MANIFEST_CSV_PATH = STATIC_DIR / 'reports_manifest.csv'
 
@@ -39,7 +44,6 @@ if MANIFEST_CSV_PATH.is_file():
     try:
         with open(MANIFEST_CSV_PATH, mode='r', encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile)
-            # Expected CSV headers: 'image_type', 'case_display_name', 'image_path', 'report_path'
             required_headers = {'case_display_name', 'image_path', 'report_path'}
             if not required_headers.issubset(reader.fieldnames):
                 logger.error(
@@ -48,51 +52,41 @@ if MANIFEST_CSV_PATH.is_file():
             else:
                 for row in reader:
                     case_name = row['case_display_name']
-                    image_path_from_csv = row['image_path'] # e.g., static/images/report1.jpg
-                    report_path_from_csv = row['report_path'] # e.g., static/reports/report1.txt or empty
+                    image_path_from_csv = row['image_path']
+                    report_path_from_csv = row['report_path']
 
-                    # Validate image_path_from_csv (must not be empty)
                     if not image_path_from_csv:
                         logger.warning(f"Empty image_path in CSV for case '{case_name}'. Skipping this entry.")
                         continue
 
-                    # Construct absolute path for image file validation (paths from CSV are relative to BASE_DIR)
                     abs_image_path_to_check = BASE_DIR / image_path_from_csv
                     if not abs_image_path_to_check.is_file():
                         logger.warning(f"Image file not found for case '{case_name}' at '{abs_image_path_to_check}'. Skipping this entry.")
                         continue
 
-
                     image_file_for_config = image_path_from_csv
+                    report_file_for_config = ""
 
-                    report_file_for_config = "" # Default to empty if no report or error
-                    if report_path_from_csv: # Report path is optional
-                        # Construct absolute path for report file validation (paths from CSV are relative to BASE_DIR)
+                    if report_path_from_csv:
                         abs_report_path_to_check = BASE_DIR / report_path_from_csv
                         if not abs_report_path_to_check.is_file():
                             logger.warning(
                                 f"Report file specified for case '{case_name}' at '{abs_report_path_to_check}' not found. "
                                 f"Proceeding without report file for this entry."
                             )
-                            # report_file_for_config remains ""
                         else:
-                            # The file (BASE_DIR / report_path_from_csv) exists.
-                            # Now, ensure report_path_from_csv string itself starts with "static/"
-                            # as per the assumption about CSV content.
-                            if report_path_from_csv.startswith('static/') or report_path_from_csv.startswith('static\\'):
-                                # Path is well-formed (starts with static/) and file exists.
-                                # Store the path as is (e.g., "static/reports/report1.txt").
+                            if report_path_from_csv.startswith('static/'):
                                 report_file_for_config = report_path_from_csv
                             else:
                                 logger.warning(
                                     f"Report path '{report_path_from_csv}' for case '{case_name}' in CSV "
-                                    f"is malformed (does not start with 'static/'). Treating as if no report path was specified."
+                                    f"is malformed. Treating as if no report path was specified."
                                 )
-                                # report_file_for_config remains ""
+                    
                     AVAILABLE_REPORTS.append({
                         "name": case_name,
-                        "image_file": image_file_for_config, # static/images/report1.jpg
-                        "report_file": report_file_for_config, # static/reports/report1.txt or ""
+                        "image_file": image_file_for_config,
+                        "report_file": report_file_for_config,
                         "image_type": row['image_type']
                     })
         AVAILABLE_REPORTS.sort(key=lambda x: x['name'])
@@ -103,5 +97,4 @@ if MANIFEST_CSV_PATH.is_file():
 else:
     logger.warning(f"Manifest CSV file not found at {MANIFEST_CSV_PATH}. AVAILABLE_REPORTS will be empty.")
 
-# --- Optional: Define a default report if needed ---
 DEFAULT_REPORT_INFO = AVAILABLE_REPORTS[0] if AVAILABLE_REPORTS else None

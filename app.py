@@ -33,15 +33,9 @@ def create_app():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s')
     logger = logging.getLogger(__name__)
 
-    # --- Check Configuration and Initialize Services ---
+    # --- Initialize Services ---
     if not config.HF_TOKEN:
-        logger.error("HF_TOKEN environment variable not set.")
-        sys.exit("Exiting: HF_TOKEN not set.")
-    if not config.MEDGEMMA_ENDPOINT_URL:
-        logger.error("MEDGEMMA_ENDPOINT_URL environment variable not set.")
-        sys.exit("Exiting: MEDGEMMA_ENDPOINT_URL not set.")
-    else:
-        logger.info(f"Using LLM API Base URL: {config.MEDGEMMA_ENDPOINT_URL}")
+        logger.warning("HF_TOKEN environment variable not set. Model downloads may be gated.")
 
     # Initialize LLM Client
     llm_client.init_llm_client()
